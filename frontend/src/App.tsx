@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Tag,
   Copy,
@@ -21,14 +21,52 @@ import {
 import type { GeneratorOptions } from './types';
 import './App.css';
 
+const STORAGE_KEY_INPUT = 'cable_label_source_input';
+const STORAGE_KEY_OPTIONS = 'cable_label_options';
+
 export default function App() {
-  const [inputText, setInputText] = useState<string>(SAMPLE_DATA);
-  const [options, setOptions] = useState<GeneratorOptions>({
-    autoSort: true,
-    colSeparator: '12spaces',
-    alignBrackets: true,
-    minPadding: 2,
+  // Đọc dữ liệu nguồn đã lưu trong LocalStorage thay vì dữ liệu ban đầu
+  const [inputText, setInputText] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_INPUT);
+      return saved !== null ? saved : '';
+    } catch {
+      return '';
+    }
   });
+
+  const [options, setOptions] = useState<GeneratorOptions>(() => {
+    try {
+      const savedOpts = localStorage.getItem(STORAGE_KEY_OPTIONS);
+      if (savedOpts) {
+        return JSON.parse(savedOpts);
+      }
+    } catch {}
+    return {
+      autoSort: true,
+      colSeparator: '12spaces',
+      alignBrackets: true,
+      minPadding: 2,
+    };
+  });
+
+  // Tự động đồng bộ vào LocalStorage khi dữ liệu nguồn thay đổi
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_INPUT, inputText);
+    } catch (e) {
+      console.error('Không thể lưu dữ liệu nguồn vào localStorage', e);
+    }
+  }, [inputText]);
+
+  // Tự động đồng bộ tùy chọn cấu hình vào LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_OPTIONS, JSON.stringify(options));
+    } catch (e) {
+      console.error('Không thể lưu tùy chọn vào localStorage', e);
+    }
+  }, [options]);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isCopiedAll, setIsCopiedAll] = useState<boolean>(false);
@@ -39,6 +77,21 @@ export default function App() {
     setTimeout(() => {
       setToastMessage(null);
     }, 2200);
+  };
+
+  // Nạp dữ liệu mẫu
+  const handleLoadSample = () => {
+    setInputText(SAMPLE_DATA);
+    showToast('✨ Đã nạp dữ liệu mẫu thử');
+  };
+
+  // Xóa trắng dữ liệu nguồn và xóa khỏi LocalStorage
+  const handleClearInput = () => {
+    setInputText('');
+    try {
+      localStorage.removeItem(STORAGE_KEY_INPUT);
+    } catch {}
+    showToast('🗑️ Đã xóa trắng dữ liệu');
   };
 
   // Tự động phân tích và sinh danh sách nhãn (tính toán phản ứng nhanh)
@@ -148,7 +201,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn-tool"
-                onClick={() => setInputText(SAMPLE_DATA)}
+                onClick={handleLoadSample}
                 title="Nạp dữ liệu mẫu"
               >
                 <Sparkles size={14} /> Mẫu thử
@@ -156,7 +209,7 @@ export default function App() {
               <button
                 type="button"
                 className="btn-tool btn-danger-tool"
-                onClick={() => setInputText('')}
+                onClick={handleClearInput}
                 title="Xóa trắng"
               >
                 <Trash2 size={14} /> Xóa

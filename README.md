@@ -6,85 +6,61 @@ Hệ thống tạo nhãn cáp 2 cột 4 dòng chuẩn viễn thông, hỗ trợ 
 
 ## 🌟 Tính Năng Nổi Bật (Key Features)
 
-1. **Tự động sắp xếp nhãn tăng dần (Natural Sorting):**
+1. **Lưu trữ dữ liệu nguồn tự động (LocalStorage):**
+   - Dữ liệu nhập được lưu trữ tức thì vào LocalStorage trình duyệt.
+   - Khi tải lại hoặc mở lại trang web, toàn bộ dữ liệu nguồn và tùy chọn cấu hình được khôi phục nguyên vẹn thay vì phải sử dụng dữ liệu mẫu mặc định.
+2. **Tự động sắp xếp nhãn tăng dần (Natural Sorting):**
    - Hỗ trợ dữ liệu đầu vào không theo thứ tự (ví dụ: `[5], [1], [10], [2]`).
-   - Sắp xếp tự nhiên theo số nguyên và ký tự (`[1] → [2] → ... → [10]`), không bị lỗi thứ tự chữ số học thông thường.
-2. **Sao chép bảo toàn định dạng (`copyWithMonospace`):**
+   - Sắp xếp tự nhiên theo số nguyên và ký tự (`[1] → [2] → ... → [10]`), không bị lỗi thứ tự chữ số thông thường.
+3. **Sao chép bảo toàn định dạng (`copyWithMonospace`):**
    - Tích hợp chuẩn `navigator.clipboard.write([ClipboardItem])` với 2 payload:
      - `text/html`: Bọc thẻ `<pre style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size: 13px; margin: 0;">` giúp giữ khoảng trắng tuyệt đối khi dán vào Microsoft Word, Outlook, OneNote, rich-text editors.
      - `text/plain`: Sử dụng đúng số lượng khoảng trắng căn lề chuẩn khi dán vào Notepad, TextEdit, terminal.
-3. **Xuất Excel & Text trực tiếp:**
+4. **Xuất Excel & Text trực tiếp:**
    - Xuất file `.xlsx` với 2 cột riêng biệt và độ rộng cột tự động điều chỉnh.
    - Xuất file `.txt` nguyên bản căn lề.
-4. **Giao diện Responsive thích ứng đa thiết bị:**
+5. **Giao diện Responsive thích ứng đa thiết bị:**
    - Hoàn toàn tương thích từ điện thoại di động (iOS/Android), máy tính bảng (iPad/Tablet) đến màn hình máy tính để bàn độ phân giải cao.
    - Hỗ trợ cuộn ngang thẻ xem trước nhãn mượt mà (`-webkit-overflow-scrolling: touch`), nút chạm ngón tay thân thiện (touch-friendly), và thanh công cụ thích ứng.
 
 ---
 
-## 🚀 Các Phương Thức Sử Dụng
+## 🚀 Cài Đặt & Vận Hành
 
-### 1. Ứng dụng Web React + TypeScript (`frontend/`)
-
-Được xây dựng với Vite + React 19 + TypeScript + Lucide Icons + SheetJS, chạy 100% phía client (không cần backend server):
+Ứng dụng web được xây dựng với Vite + React 19 + TypeScript + Lucide Icons + SheetJS, chạy 100% phía client (0ms latency, không phụ thuộc backend nặng nề):
 
 ```bash
 # Di chuyển vào thư mục frontend
 cd frontend
 
-# Cài đặt thư viện (nếu chưa cài)
-bun install
-# hoặc: npm install
+# Cài đặt thư viện
+npm install
+# hoặc: bun install
 
-# Khởi chạy máy chủ phát triển
-bun run dev
-# hoặc: npm run dev
-```
+# Khởi chạy môi trường phát triển
+npm run dev
 
-Truy cập: `http://localhost:5173`
-
----
-
-### 2. Ứng dụng Desktop Python Tkinter (`app.py`)
-
-Giao diện native desktop có hỗ trợ sắp xếp tự động, sao chép định dạng đa năng (HTML + Plain text trên Windows/macOS/Linux), và xuất file Excel:
-
-```bash
-python3 app.py
+# Hoặc build và chạy bản preview sản xuất
+npm run build
+npm run preview -- --host 0.0.0.0 --port 5175
 ```
 
 ---
 
-### 3. Giao diện Web Streamlit (`web_app.py`)
-
-Giao diện web nhanh với bảng điều khiển trực quan:
-
-```bash
-streamlit run web_app.py
-```
-
----
-
-### 4. Trang Web Đơn Lẻ Không Cần Cài Đặt (`gui_web.html`)
-
-Mở trực tiếp tệp [`gui_web.html`](file:///Users/dinhtronganh/Documents/Github/label/gui_web.html) trong bất kỳ trình duyệt nào (Chrome, Safari, Edge, Firefox).
-
----
-
-## 📋 Cấu Trúc Dự Án
+## 📋 Cấu Trúc Dự Án Tối Giản (Lightweight Architecture)
 
 ```
 ├── frontend/                     # React + TypeScript web application
 │   ├── src/
 │   │   ├── utils/
 │   │   │   └── labelGenerator.ts # Thuật toán natural sort, 2-column formatting, copyWithMonospace, Excel export
-│   │   ├── App.tsx               # Giao diện chính với hiệu ứng Toast & feedback copy
-│   │   ├── App.css               # Phong cách tối giản hiện đại (Apple/Slate theme)
-│   │   └── types.ts              # Định nghĩa kiểu dữ liệu TypeScript
+│   │   ├── App.tsx               # Giao diện chính với LocalStorage, Toast & feedback copy
+│   │   ├── App.css               # Phong cách tối giản hiện đại (Apple/Slate theme) & responsive
+│   │   ├── types.ts              # Định nghĩa kiểu dữ liệu TypeScript
+│   │   └── main.tsx              # Entry point
+│   ├── index.html
+│   ├── vite.config.ts            # Cấu hình Vite & allowedHosts cho reverse proxy
 │   └── package.json
-├── app.py                        # Python Tkinter GUI
-├── label_export.py               # Core parsing & clipboard utility (Python)
-├── web_app.py                    # Streamlit Web App
-├── gui_web.html                  # Standalone Single-file HTML/JS App
+├── .gitignore                    # Loại bỏ cache và build artifacts
 └── README.md
 ```
