@@ -10,54 +10,93 @@ import {
   ClipboardPaste,
   ArrowDownUp,
   Settings2,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
-  SAMPLE_DATA,
-  parseRawLines,
+  SAMPLE_DATA_CABLE,
+  SAMPLE_DATA_24MM,
+  parseCableLines,
+  parseTape24mmLines,
   generateBlocks,
   copyWithMonospace,
   exportToExcel,
 } from './utils/labelGenerator';
-import type { GeneratorOptions } from './types';
+import type { GeneratorOptions, LabelMode } from './types';
 import './App.css';
 
-const STORAGE_KEY_INPUT = 'cable_label_source_input';
+const STORAGE_KEY_INPUT_24MM = 'cable_label_input_24mm';
+const STORAGE_KEY_INPUT_CABLE = 'cable_label_input_cable';
 const STORAGE_KEY_OPTIONS = 'cable_label_options';
 
 export default function App() {
-  // Đọc dữ liệu nguồn đã lưu trong LocalStorage thay vì dữ liệu ban đầu
-  const [inputText, setInputText] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_INPUT);
-      return saved !== null ? saved : '';
-    } catch {
-      return '';
-    }
-  });
-
   const [options, setOptions] = useState<GeneratorOptions>(() => {
     try {
       const savedOpts = localStorage.getItem(STORAGE_KEY_OPTIONS);
       if (savedOpts) {
-        return JSON.parse(savedOpts);
+        const parsed = JSON.parse(savedOpts);
+        return {
+          mode: parsed.mode || 'tape24mm',
+          colSeparator: parsed.colSeparator || '12spaces',
+          alignBrackets: parsed.alignBrackets ?? true,
+          minPadding: parsed.minPadding ?? 2,
+          tapeSpaces: parsed.tapeSpaces ?? 32,
+          tapeMiddleBlankLines: parsed.tapeMiddleBlankLines ?? 1,
+          autoSort: parsed.autoSort ?? true,
+        };
       }
-    } catch {}
+    } catch (e) {
+      console.warn('Lỗi đọc options từ localStorage', e);
+    }
     return {
-      autoSort: true,
+      mode: 'tape24mm',
       colSeparator: '12spaces',
       alignBrackets: true,
       minPadding: 2,
+      tapeSpaces: 32,
+      tapeMiddleBlankLines: 1,
+      autoSort: true,
     };
   });
 
-  // Tự động đồng bộ vào LocalStorage khi dữ liệu nguồn thay đổi
+  const [input24mm, setInput24mm] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_INPUT_24MM);
+      if (saved !== null) return saved;
+      return SAMPLE_DATA_24MM;
+    } catch {
+      return SAMPLE_DATA_24MM;
+    }
+  });
+
+  const [inputCable, setInputCable] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_INPUT_CABLE);
+      if (saved !== null) return saved;
+      const legacy = localStorage.getItem('cable_label_source_input');
+      if (legacy !== null && legacy.includes('Fr:')) return legacy;
+      return SAMPLE_DATA_CABLE;
+    } catch {
+      return SAMPLE_DATA_CABLE;
+    }
+  });
+
+  // Tự động lưu input 24mm vào localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY_INPUT, inputText);
+      localStorage.setItem(STORAGE_KEY_INPUT_24MM, input24mm);
     } catch (e) {
-      console.error('Không thể lưu dữ liệu nguồn vào localStorage', e);
+      console.error('Không thể lưu input 24mm', e);
     }
-  }, [inputText]);
+  }, [input24mm]);
+
+  // Tự động lưu input Cable vào localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_INPUT_CABLE, inputCable);
+    } catch (e) {
+      console.error('Không thể lưu input cable', e);
+    }
+  }, [inputCable]);
 
   // Tự động đồng bộ tùy chọn cấu hình vào LocalStorage
   useEffect(() => {
@@ -79,25 +118,51 @@ export default function App() {
     }, 2200);
   };
 
-  // Nạp dữ liệu mẫu
+  const currentInput = options.mode === 'tape24mm' ? input24mm : inputCable;
+  const setCurrentInput = options.mode === 'tape24mm' ? setInput24mm : setInputCable;
+
+  // Nạp dữ liệu mẫu tương ứng với chế độ đang chọn
   const handleLoadSample = () => {
-    setInputText(SAMPLE_DATA);
+    if (options.mode === 'tape24mm') {
+      setInput24mm(SAMPLE_DATA_24MM);
+    } else {
+      setInputCable(SAMPLE_DATA_CABLE);
+    }
     showToast('✨ Đã nạp dữ liệu mẫu thử');
   };
 
   // Xóa trắng dữ liệu nguồn và xóa khỏi LocalStorage
   const handleClearInput = () => {
-    setInputText('');
+    setCurrentInput('');
     try {
-      localStorage.removeItem(STORAGE_KEY_INPUT);
-    } catch {}
+      if (options.mode === 'tape24mm') {
+        localStorage.removeItem(STORAGE_KEY_INPUT_24MM);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_INPUT_CABLE);
+      }
+    } catch (e) {
+      console.warn('Lỗi xóa input từ localStorage', e);
+    }
     showToast('🗑️ Đã xóa trắng dữ liệu');
   };
 
-  // Tự động phân tích và sinh danh sách nhãn (tính toán phản ứng nhanh)
+  // Chuyển đổi qua lại giữa các loại nhãn
+  const handleSwitchMode = (newMode: LabelMode) => {
+    setOptions((prev) => ({ ...prev, mode: newMode }));
+    showToast(
+      newMode === 'tape24mm'
+        ? '🏷️ Chuyển sang Nhãn 2 cột khổ 24mm (32 khoảng trắng)'
+        : '🔀 Chuyển sang Nhãn cáp 2 chiều (Fr / To)'
+    );
+  };
+
+  // Tự động phân tích và sinh danh sách nhãn
   const parsedItems = useMemo(() => {
-    return parseRawLines(inputText, options.autoSort);
-  }, [inputText, options.autoSort]);
+    if (options.mode === 'tape24mm') {
+      return parseTape24mmLines(currentInput, options.autoSort);
+    }
+    return parseCableLines(currentInput, options.autoSort);
+  }, [currentInput, options.mode, options.autoSort]);
 
   const generatedBlocks = useMemo(() => {
     return generateBlocks(parsedItems, options);
@@ -137,24 +202,26 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'nhan_cap.txt';
+    a.download = options.mode === 'tape24mm' ? 'nhan_24mm.txt' : 'nhan_cap.txt';
     a.click();
     URL.revokeObjectURL(url);
-    showToast('💾 Đã tải về tệp tin nhan_cap.txt');
+    showToast(`💾 Đã tải về tệp tin ${a.download}`);
   };
 
   // Xuất file Excel .xlsx
   const handleExportExcel = () => {
     if (!parsedItems.length) return;
-    exportToExcel(parsedItems, 'nhan_cap_chuan.xlsx');
-    showToast('📊 Đã xuất tệp tin Excel nhan_cap_chuan.xlsx');
+    const filename =
+      options.mode === 'tape24mm' ? 'nhan_24mm_chuan.xlsx' : 'nhan_cap_chuan.xlsx';
+    exportToExcel(parsedItems, options.mode, filename);
+    showToast(`📊 Đã xuất tệp tin Excel ${filename}`);
   };
 
   // Dán từ clipboard
   const handlePasteClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      setInputText(text);
+      setCurrentInput(text);
       showToast('📋 Đã dán dữ liệu từ Clipboard');
     } catch {
       showToast('⚠️ Không thể đọc Clipboard (Vui lòng bấm Ctrl+V)');
@@ -171,24 +238,46 @@ export default function App() {
           </div>
           <div>
             <div className="header-title-row">
-              <h1>Tạo Nhãn Cáp Mạng</h1>
-              <span className="tech-badge">React + TypeScript</span>
+              <h1>Hệ Thống Tạo Nhãn Cáp & Thiết Bị</h1>
+              <span className="tech-badge">React 19 + TypeScript</span>
               <span className="offline-badge">Client-side Pure</span>
             </div>
             <p className="header-subtitle">
-              Tự động sắp xếp nhãn tăng dần • Ép cứng font Monospace khi Copy chống lệch format trong
-              Word / Docs / Excel
+              Hỗ trợ nhãn 2 cột khổ băng 24mm (32 khoảng trắng) & nhãn cáp 2 chiều (Fr/To) • Ép font Monospace chống lệch định dạng
             </p>
           </div>
         </div>
       </header>
+
+      {/* CHỌN LOẠI NHÃN (MODE TABS) */}
+      <nav className="mode-nav">
+        <button
+          type="button"
+          className={`mode-tab-btn ${options.mode === 'tape24mm' ? 'active' : ''}`}
+          onClick={() => handleSwitchMode('tape24mm')}
+        >
+          <SlidersHorizontal size={16} />
+          <span>Nhãn 2 Cột Khổ Băng 24mm (32 Khoảng Trắng)</span>
+          <span className="mode-badge-new">Mới</span>
+        </button>
+        <button
+          type="button"
+          className={`mode-tab-btn ${options.mode === 'cable' ? 'active' : ''}`}
+          onClick={() => handleSwitchMode('cable')}
+        >
+          <Tag size={16} />
+          <span>Nhãn Cáp 2 Chiều (Fr / To - 4 Dòng)</span>
+        </button>
+      </nav>
 
       {/* MAIN TWO-COLUMN LAYOUT */}
       <main className="app-main">
         {/* KHỐI TRÁI: INPUT & OPTIONS */}
         <section className="pane pane-left">
           <div className="pane-header">
-            <span className="pane-title">📥 Dữ liệu nguồn (Input)</span>
+            <span className="pane-title">
+              📥 Dữ liệu nguồn ({options.mode === 'tape24mm' ? 'Khổ 24mm' : 'Fr / To'})
+            </span>
             <div className="btn-toolbar">
               <button
                 type="button"
@@ -219,9 +308,13 @@ export default function App() {
 
           <textarea
             className="input-textarea"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Dán dữ liệu từ file Excel (định dạng Fr: ... [số] To: ... [số])..."
+            value={currentInput}
+            onChange={(e) => setCurrentInput(e.target.value)}
+            placeholder={
+              options.mode === 'tape24mm'
+                ? 'Dán dữ liệu nhãn 2 cột (Ví dụ: E01        E01 hoặc 2 cột từ Excel)...'
+                : 'Dán dữ liệu từ file Excel (định dạng Fr: ... [số] To: ... [số])...'
+            }
             spellCheck={false}
           />
 
@@ -229,7 +322,10 @@ export default function App() {
           <div className="options-card">
             <div className="options-header">
               <Settings2 size={16} />
-              <span>Cấu hình & Tự động sắp xếp</span>
+              <span>
+                Cấu hình tùy chọn •{' '}
+                {options.mode === 'tape24mm' ? 'Khổ băng 24mm' : 'Nhãn cáp 2 chiều'}
+              </span>
             </div>
 
             {/* Checkbox tự động sắp xếp */}
@@ -241,71 +337,164 @@ export default function App() {
               />
               <span className="checkbox-label">
                 <ArrowDownUp size={15} className="option-icon" />
-                <strong>Tự động sắp xếp nhãn tăng dần</strong> (1 → 2 → 5 → 10...)
+                <strong>Tự động sắp xếp nhãn tăng dần</strong>{' '}
+                {options.mode === 'tape24mm' ? '(E01 → E02 → E10...)' : '(1 → 2 → 5 → 10...)'}
               </span>
             </label>
 
-            {/* Chọn khoảng cách cột */}
-            <div className="radio-group-container">
-              <span className="radio-group-title">Khoảng cách 2 cột:</span>
-              <div className="radio-options">
-                <label className="radio-label">
-                  <input
-                    type="radio"
-                    name="colSep"
-                    value="12spaces"
-                    checked={options.colSeparator === '12spaces'}
-                    onChange={() => setOptions({ ...options, colSeparator: '12spaces' })}
-                  />
-                  <span>12 Spaces (In ấn/Txt)</span>
-                </label>
-                <label className="radio-label">
-                  <input
-                    type="radio"
-                    name="colSep"
-                    value="tab"
-                    checked={options.colSeparator === 'tab'}
-                    onChange={() => setOptions({ ...options, colSeparator: 'tab' })}
-                  />
-                  <span>Tab '\t' (Excel 2 cột)</span>
-                </label>
-                <label className="radio-label">
-                  <input
-                    type="radio"
-                    name="colSep"
-                    value="8spaces"
-                    checked={options.colSeparator === '8spaces'}
-                    onChange={() => setOptions({ ...options, colSeparator: '8spaces' })}
-                  />
-                  <span>8 Spaces</span>
-                </label>
-              </div>
-            </div>
+            {options.mode === 'tape24mm' ? (
+              /* TÙY CHỌN RIÊNG CHO KHỔ BĂNG 24MM */
+              <>
+                {/* Chọn khoảng cách cột (mặc định chuẩn 32 khoảng trắng) */}
+                <div className="radio-group-container">
+                  <span className="radio-group-title">Khoảng cách giữa 2 cột:</span>
+                  <div className="radio-options">
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="tapeSpaces"
+                        checked={options.tapeSpaces === 32}
+                        onChange={() => setOptions({ ...options, tapeSpaces: 32 })}
+                      />
+                      <strong>32 Spaces (Chuẩn 24mm)</strong>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="tapeSpaces"
+                        checked={options.tapeSpaces === 24}
+                        onChange={() => setOptions({ ...options, tapeSpaces: 24 })}
+                      />
+                      <span>24 Spaces</span>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="tapeSpaces"
+                        checked={options.tapeSpaces === 40}
+                        onChange={() => setOptions({ ...options, tapeSpaces: 40 })}
+                      />
+                      <span>40 Spaces</span>
+                    </label>
+                  </div>
 
-            {/* Chọn căn lề [số] */}
-            <div className="radio-group-container">
-              <span className="radio-group-title">Căn lề [số]:</span>
-              <div className="radio-options">
-                <label className="radio-label">
-                  <input
-                    type="radio"
-                    name="alignBrackets"
-                    checked={options.alignBrackets}
-                    onChange={() => setOptions({ ...options, alignBrackets: true })}
-                  />
-                  <span>Căn thẳng cột (main.py)</span>
-                </label>
-                <label className="radio-label">
-                  <input
-                    type="radio"
-                    name="alignBrackets"
-                    checked={!options.alignBrackets}
-                    onChange={() => setOptions({ ...options, alignBrackets: false })}
-                  />
-                  <span>Cố định 4 spaces</span>
-                </label>
-              </div>
-            </div>
+                  <div className="custom-spaces-row">
+                    <span className="field-label">Tùy chỉnh:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      className="input-number-mini"
+                      value={options.tapeSpaces}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val >= 0) {
+                          setOptions({ ...options, tapeSpaces: val });
+                        }
+                      }}
+                    />
+                    <span className="field-unit">khoảng trắng</span>
+                  </div>
+                </div>
+
+                {/* Phân bổ chiều dọc: 1 dòng trống ở giữa */}
+                <div className="radio-group-container">
+                  <span className="radio-group-title">Phân bổ chiều dọc khổ băng:</span>
+                  <div className="radio-options">
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="tapeMiddleBlankLines"
+                        checked={options.tapeMiddleBlankLines === 1}
+                        onChange={() => setOptions({ ...options, tapeMiddleBlankLines: 1 })}
+                      />
+                      <strong>1 dòng trống ở giữa (Chuẩn phân bổ 24mm)</strong>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="tapeMiddleBlankLines"
+                        checked={options.tapeMiddleBlankLines === 0}
+                        onChange={() => setOptions({ ...options, tapeMiddleBlankLines: 0 })}
+                      />
+                      <span>Không có dòng trống</span>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="tapeMiddleBlankLines"
+                        checked={options.tapeMiddleBlankLines === 2}
+                        onChange={() => setOptions({ ...options, tapeMiddleBlankLines: 2 })}
+                      />
+                      <span>2 dòng trống</span>
+                    </label>
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* TÙY CHỌN CHO NHÃN CÁP 2 CHIỀU (FR/TO) */
+              <>
+                <div className="radio-group-container">
+                  <span className="radio-group-title">Khoảng cách 2 cột:</span>
+                  <div className="radio-options">
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="colSep"
+                        value="12spaces"
+                        checked={options.colSeparator === '12spaces'}
+                        onChange={() => setOptions({ ...options, colSeparator: '12spaces' })}
+                      />
+                      <span>12 Spaces (In ấn/Txt)</span>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="colSep"
+                        value="tab"
+                        checked={options.colSeparator === 'tab'}
+                        onChange={() => setOptions({ ...options, colSeparator: 'tab' })}
+                      />
+                      <span>Tab '\t' (Excel 2 cột)</span>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="colSep"
+                        value="8spaces"
+                        checked={options.colSeparator === '8spaces'}
+                        onChange={() => setOptions({ ...options, colSeparator: '8spaces' })}
+                      />
+                      <span>8 Spaces</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="radio-group-container">
+                  <span className="radio-group-title">Căn lề [số]:</span>
+                  <div className="radio-options">
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="alignBrackets"
+                        checked={options.alignBrackets}
+                        onChange={() => setOptions({ ...options, alignBrackets: true })}
+                      />
+                      <span>Căn thẳng cột (main.py)</span>
+                    </label>
+                    <label className="radio-label">
+                      <input
+                        type="radio"
+                        name="alignBrackets"
+                        checked={!options.alignBrackets}
+                        onChange={() => setOptions({ ...options, alignBrackets: false })}
+                      />
+                      <span>Cố định 4 spaces</span>
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
@@ -317,8 +506,11 @@ export default function App() {
               <span className={`count-pill ${generatedBlocks.length ? 'count-active' : ''}`}>
                 {generatedBlocks.length} nhãn
               </span>
+              {options.mode === 'tape24mm' && (
+                <span className="format-pill">Khổ 24mm • {options.tapeSpaces} spaces</span>
+              )}
               {options.autoSort && generatedBlocks.length > 0 && (
-                <span className="sort-pill">Đã sắp xếp 1 → n</span>
+                <span className="sort-pill">Đã sắp xếp tự nhiên</span>
               )}
             </div>
 

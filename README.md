@@ -1,6 +1,9 @@
-# Cable Label Generator (Hệ thống Sinh Nhãn Cáp Viễn Thông)
+# Cable & Device Label Generator (Hệ thống Sinh Nhãn Cáp & Thiết Bị)
 
-Hệ thống tạo nhãn cáp 2 cột 4 dòng chuẩn viễn thông, hỗ trợ tự động căn lề monospace, sắp xếp tự nhiên theo chỉ số `[1] → [n]`, sao chép bảo toàn định dạng vào Excel / Notepad, và xuất file `.xlsx` / `.txt`.
+Hệ thống tạo nhãn chuyên dụng cho kỹ thuật viễn thông và hạ tầng mạng:
+1. **Nhãn 2 cột khổ băng 24mm:** Căn chính xác 32 khoảng trắng giữa 2 cột, giữ 1 dòng trống ở giữa để phân bổ đều chiều dọc trên khổ băng in 24mm.
+2. **Nhãn cáp 2 chiều (Fr / To):** Định dạng 2 cột 4 dòng chuẩn viễn thông kèm chỉ số `[1] → [n]`.
+Hỗ trợ tự động căn lề Monospace, sắp xếp tự nhiên (Natural Sorting), sao chép bảo toàn định dạng vào Word/Excel/Notepad, và xuất trực tiếp file `.xlsx` / `.txt`.
 
 ---
 

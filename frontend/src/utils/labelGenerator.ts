@@ -1,19 +1,34 @@
 import * as XLSX from 'xlsx';
-import type { ParsedLabel, GeneratedBlock, GeneratorOptions } from '../types';
+import type {
+  ParsedLabel,
+  ParsedTape24mmLabel,
+  ParsedItem,
+  GeneratedBlock,
+  GeneratorOptions,
+  LabelMode,
+} from '../types';
 
-export const SAMPLE_DATA = `Fr: S4_U13-14_SRV số 1_Slot 4_Port 1    [5]\tTo: S4_U41_ODF_port 1->N2_U13_ODF_port 1    [5]
+export const SAMPLE_DATA_CABLE = `Fr: S4_U13-14_SRV số 1_Slot 4_Port 1    [5]\tTo: S4_U41_ODF_port 1->N2_U13_ODF_port 1    [5]
 Fr: S4_U13-14_SRV số 1_Slot 4_Port 2    [2]\tTo: S4_U41_ODF_port 2->N2_U13_ODF_port 2    [2]
 Fr: S4_U13-14_SRV số 1_iDrac    [10]\tTo: S4_U40_PP_Port 5->N1_U3_PP_Port 5    [10]
 Fr: N2_U13_ODF_port 1    [1]\tTo: N3_U1-13_CoreSw01_Slot 10_port 1    [1]
 Fr: N2_U13_ODF_port 2    [7]\tTo: N4_U1-13_CoreSw02_Slot 10_port 1    [7]
 Fr: N1_U3_PP_Port 5    [3]\tTo: N1_U20_SWMgmt_port 18    [3]`;
 
+// Dữ liệu mẫu chuẩn cho loại nhãn 2 cột khổ băng 24mm
+export const SAMPLE_DATA_24MM = `E01        E01
+E02        E02
+E03        E03
+E04        E04
+E05        E05
+E10        E10`;
+
+export const SAMPLE_DATA = SAMPLE_DATA_CABLE;
+
 /**
- * Phân tích dữ liệu thô từ Excel thành danh sách đối tượng ParsedLabel.
- * Tự động chuẩn hóa Unicode NFC và hỗ trợ tự động sắp xếp theo thứ tự số tăng dần (1, 2, 5, 10...).
+ * Phân tích dữ liệu nhãn cáp 2 chiều (Fr/To) từ text/Excel.
  */
-export function parseRawLines(rawText: string, autoSort = true): ParsedLabel[] {
-  // Chuẩn hóa Unicode NFC để tránh lệch độ dài ký tự tiếng Việt
+export function parseCableLines(rawText: string, autoSort = true): ParsedLabel[] {
   const normalized = rawText
     .normalize('NFC')
     .replace(/\u00a0/g, ' ')
@@ -38,7 +53,77 @@ export function parseRawLines(rawText: string, autoSort = true): ParsedLabel[] {
     }
   }
 
-  // Tự động sắp xếp nhãn tăng dần tự nhiên (Natural Sort: 1, 2, 10 thay vì 1, 10, 2)
+  if (autoSort) {
+    parsed.sort((a, b) =>
+      a.idx.localeCompare(b.idx, undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }
+
+  return parsed;
+}
+
+export const parseRawLines = parseCableLines;
+
+/**
+ * Phân tích dữ liệu 2 cột cho khổ băng in 24mm (ví dụ: E01        E01).
+ * Hỗ trợ phân cách bằng Tab, 2+ khoảng trắng, dấu |, hoặc phẩy.
+ * Nếu một dòng chỉ chứa 1 giá trị, tự động nhân đôi sang cột 2 để in 2 bên.
+ */
+export function parseTape24mmLines(rawText: string, autoSort = true): ParsedTape24mmLabel[] {
+  const normalized = rawText
+    .normalize('NFC')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\u200b/g, '')
+    .replace(/\u3000/g, ' ');
+
+  const lines = normalized.split('\n');
+  const parsed: ParsedTape24mmLabel[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let left = '';
+    let right = '';
+
+    if (trimmed.includes('\t')) {
+      const parts = trimmed.split('\t').map((s) => s.trim()).filter(Boolean);
+      left = parts[0] || '';
+      right = parts.length > 1 ? parts[1] : left;
+    } else if (/\s{2,}/.test(trimmed)) {
+      const parts = trimmed.split(/\s{2,}/).map((s) => s.trim()).filter(Boolean);
+      left = parts[0] || '';
+      right = parts.length > 1 ? parts[1] : left;
+    } else if (trimmed.includes('|')) {
+      const parts = trimmed.split('|').map((s) => s.trim()).filter(Boolean);
+      left = parts[0] || '';
+      right = parts.length > 1 ? parts[1] : left;
+    } else if (trimmed.includes(';')) {
+      const parts = trimmed.split(';').map((s) => s.trim()).filter(Boolean);
+      left = parts[0] || '';
+      right = parts.length > 1 ? parts[1] : left;
+    } else if (trimmed.includes(',')) {
+      const parts = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+      left = parts[0] || '';
+      right = parts.length > 1 ? parts[1] : left;
+    } else {
+      const parts = trimmed.split(/\s+/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        left = parts[0];
+        right = parts[1];
+      } else {
+        left = trimmed;
+        right = trimmed;
+      }
+    }
+
+    if (!left && !right) continue;
+    if (!right) right = left;
+
+    const idx = left === right ? left : `${left} - ${right}`;
+    parsed.push({ left, right, idx });
+  }
+
   if (autoSort) {
     parsed.sort((a, b) =>
       a.idx.localeCompare(b.idx, undefined, { numeric: true, sensitivity: 'base' })
@@ -49,9 +134,9 @@ export function parseRawLines(rawText: string, autoSort = true): ParsedLabel[] {
 }
 
 /**
- * Sinh chuỗi 4 dòng định dạng nhãn cáp 2 chiều với căn lề Monospace chuẩn xác.
+ * Sinh chuỗi nhãn cáp 2 chiều (Fr/To) 4 dòng với căn lề Monospace.
  */
-export function generateBlocks(
+export function generateCableBlocks(
   parsedList: ParsedLabel[],
   options: GeneratorOptions
 ): GeneratedBlock[] {
@@ -90,10 +175,54 @@ export function generateBlocks(
 }
 
 /**
- * Sao chép đa định dạng ép cứng font Monospace (chuẩn ClipboardItem theo đúng yêu cầu).
+ * Sinh chuỗi nhãn 2 cột khổ băng 24mm:
+ * - Điều chỉnh chính xác số khoảng trắng (mặc định chuẩn 32 khoảng trắng) giữa 2 cột.
+ * - Giữ 1 dòng trống ở giữa để phân bổ đều chiều dọc trên khổ băng 24mm.
+ *
+ * Cấu trúc đầu ra:
+ * E01                                E01
+ * 
+ * E01                                E01
+ */
+export function generateTape24mmBlocks(
+  parsedList: ParsedTape24mmLabel[],
+  options: GeneratorOptions
+): GeneratedBlock[] {
+  const spaces = options.tapeSpaces ?? 32;
+  const middleBlanks = options.tapeMiddleBlankLines ?? 1;
+
+  const spacer = ' '.repeat(Math.max(0, spaces));
+  const middle = '\n'.repeat(Math.max(0, middleBlanks) + 1);
+
+  return parsedList.map((item) => {
+    const row = `${item.left}${spacer}${item.right}`;
+    const blockText = `${row}${middle}${row}`;
+
+    return {
+      idx: item.idx,
+      blockText,
+      parsed: item,
+    };
+  });
+}
+
+/**
+ * Sinh chuỗi nhãn theo chế độ đang chọn (cable hoặc tape24mm).
+ */
+export function generateBlocks(
+  parsedList: ParsedItem[],
+  options: GeneratorOptions
+): GeneratedBlock[] {
+  if (options.mode === 'tape24mm') {
+    return generateTape24mmBlocks(parsedList as ParsedTape24mmLabel[], options);
+  }
+  return generateCableBlocks(parsedList as ParsedLabel[], options);
+}
+
+/**
+ * Sao chép đa định dạng ép cứng font Monospace (chuẩn ClipboardItem).
  */
 export async function copyWithMonospace(formattedText: string): Promise<boolean> {
-  // Bọc chuỗi kết quả trong thẻ <pre> và ép cứng font monospace
   const htmlContent = `<pre style="font-family: 'SF Mono', Consolas, 'Courier New', monospace; font-size: 13px; margin: 0;">${formattedText}</pre>`;
 
   try {
@@ -108,7 +237,6 @@ export async function copyWithMonospace(formattedText: string): Promise<boolean>
     await navigator.clipboard.write([clipboardItem]);
     return true;
   } catch {
-    // Fallback nếu trình duyệt chưa cấp quyền ClipboardItem đầy đủ
     try {
       const textArea = document.createElement('textarea');
       textArea.value = formattedText;
@@ -127,11 +255,10 @@ export async function copyWithMonospace(formattedText: string): Promise<boolean>
 }
 
 /**
- * Xuất danh sách nhãn ra tệp tin Excel (.xlsx) chuẩn cấu trúc từng cột, tránh hoàn toàn lỗi lệch font.
+ * Xuất danh sách nhãn cáp ra tệp tin Excel (.xlsx) chuẩn cấu trúc từng cột.
  */
-export function exportToExcel(parsedList: ParsedLabel[], filename = 'nhan_cap_chuan.xlsx') {
+export function exportCableToExcel(parsedList: ParsedLabel[], filename = 'nhan_cap_chuan.xlsx') {
   const wb = XLSX.utils.book_new();
-
   const rows: (string | number)[][] = [];
 
   for (const item of parsedList) {
@@ -153,8 +280,6 @@ export function exportToExcel(parsedList: ParsedLabel[], filename = 'nhan_cap_ch
   }
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
-
-  // Đặt độ rộng các cột tự động đẹp mắt
   ws['!cols'] = [
     { wch: 48 }, // Cột A: Tên cổng 1
     { wch: 10 }, // Cột B: [Số]
@@ -165,4 +290,57 @@ export function exportToExcel(parsedList: ParsedLabel[], filename = 'nhan_cap_ch
 
   XLSX.utils.book_append_sheet(wb, ws, 'Nhan_Cap');
   XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Xuất danh sách nhãn 2 cột khổ 24mm ra tệp tin Excel (.xlsx).
+ */
+export function exportTape24mmToExcel(
+  parsedList: ParsedTape24mmLabel[],
+  filename = 'nhan_24mm_chuan.xlsx'
+) {
+  const wb = XLSX.utils.book_new();
+  const rows: (string | number)[][] = [];
+
+  for (const item of parsedList) {
+    // Dòng 1: Cột 1 và Cột 2
+    rows.push([item.left, '', item.right]);
+    // Dòng 2: Dòng trống ở giữa để phân bổ đều trên khổ 24mm
+    rows.push([]);
+    // Dòng 3: Cột 1 và Cột 2 lặp lại
+    rows.push([item.left, '', item.right]);
+    // Khoảng trống cách biệt giữa các nhãn
+    rows.push([], []);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 28 }, // Cột A: Cột 1
+    { wch: 8 },  // Cột B: Khoảng trống
+    { wch: 28 }, // Cột C: Cột 2
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Nhan_24mm');
+  XLSX.writeFile(wb, filename);
+}
+
+/**
+ * Hàm điều phối xuất Excel hỗ trợ cả 2 chế độ nhãn.
+ */
+export function exportToExcel(
+  parsedList: ParsedItem[],
+  mode: LabelMode = 'cable',
+  filename?: string
+) {
+  if (mode === 'tape24mm') {
+    exportTape24mmToExcel(
+      parsedList as ParsedTape24mmLabel[],
+      filename || 'nhan_24mm_chuan.xlsx'
+    );
+  } else {
+    exportCableToExcel(
+      parsedList as ParsedLabel[],
+      filename || 'nhan_cap_chuan.xlsx'
+    );
+  }
 }
